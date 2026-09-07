@@ -6,6 +6,12 @@ Generalisable, transparent rule-based fraud-phrase scorer for school
 monitoring Notes.  Replaces the earlier hardcoded EMIS-code lookup with
 categorised regex patterns that work on ANY note text.
 
+HONESTY NOTE: despite the historical "Qwen_" prefix on the output columns
+(Qwen_Fraud_Flag / Qwen_Fraud_Reason), this scorer is a fully deterministic,
+rule-based regex matcher -- no LLM API is called anywhere in the pipeline.
+The column names are kept for backward compatibility with the backend,
+dashboard and audits.
+
 METHODOLOGY
 -----------
 1. Every Tier 1 note is first checked against an ADMIN-DATA-NOISE filter.
@@ -26,11 +32,15 @@ FRAUD CATEGORIES
   B  Unauthorized absence with impunity
   C  Illegal occupation / misuse of school property
   D  Ghost-teacher / salary fraud
+  E  Ghost-school indicators (abandoned / non-functional)
 
-ESCALATION
+ESCALATION (values live in ghostwatch_config.py)
 ----------
-  Ghost_Risk_Score_Tier1 += 10  (capped at 100)
+  Ghost_Risk_Score_Tier1 += FRAUD_SCORE_BOOST  (capped at SCORE_CAP)
   Priority: Low -> Medium, Medium -> High, High stays High
+  (merge_satellite_scores_v2.py later recomputes Priority from the score,
+  where the fraud escalation is FRAUD_PRIORITY_ESCALATION_MERGE; the score
+  boost is what survives into the final file.)
 
 USAGE
 -----
@@ -40,6 +50,12 @@ USAGE
 
 import re
 import pandas as pd
+
+from ghostwatch_config import (
+    FRAUD_PRIORITY_ESCALATION,
+    FRAUD_SCORE_BOOST,
+    SCORE_CAP,
+)
 
 # =====================================================================
 #  FRAUD PATTERN CATEGORIES  (compiled regexes, case-insensitive)
@@ -211,17 +227,14 @@ def main():
         if flag:
             fraud_count += 1
 
-            # ── Score boost (+10, cap 100) ───────────────────────────
+            # ── Score boost (capped at SCORE_CAP) ─────────────────────
             old_score = df.loc[idx, "Ghost_Risk_Score_Tier1"]
-            df.loc[idx, "Ghost_Risk_Score_Tier1"] = min(old_score + 10, 100.0)
+            df.loc[idx, "Ghost_Risk_Score_Tier1"] = min(
+                old_score + FRAUD_SCORE_BOOST, float(SCORE_CAP))
 
             # ── Priority escalation ──────────────────────────────────
             old_pri = df.loc[idx, "Priority"]
-            if old_pri == "Low":
-                df.loc[idx, "Priority"] = "Medium"
-            elif old_pri == "Medium":
-                df.loc[idx, "Priority"] = "High"
-            # High stays High
+            df.loc[idx, "Priority"] = FRAUD_PRIORITY_ESCALATION.get(old_pri, old_pri)
         else:
             clean_count += 1
 

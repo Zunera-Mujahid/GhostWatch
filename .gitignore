@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime logs
+*.log
+
+# Pipeline-generated one-time safety backup (add_explanation_columns.py)
+ghostwatch_final_merged_v2_backup.csv

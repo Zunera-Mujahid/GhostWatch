@@ -1,0 +1,14 @@
+{
+  "title": "Punjab Annual School Census Report 2017-18 (public schools)",
+  "file": "public-census_oct_2018.xlsx",
+  "sheet": "school",
+  "rows": 52470,
+  "columns": 108,
+  "size_bytes": 28629374,
+  "sha256": "0f1a5f55cc084b62f5f5746e7b6ae2913ec2dbe0f01cd99a044df4159f56fe47",
+  "downloaded": "2026-09-06",
+  "dataset_url": "https://opendata.com.pk/dataset/punjab-annual-school-census-report-2017-18",
+  "resource_url": "https://opendata.com.pk/dataset/3560f1d7-b9ab-4a1d-b0e9-150ae853dd12/resource/7baf2669-333c-429a-ba2a-d000ded4ae8f/download/public-census_oct_2018.xlsx",
+  "publisher": "PMIU / PESRP via Open Data Pakistan (NCBC)",
+  "note": "Original government census spreadsheet, stored unmodified. The site offers no per-school view, only full-file download; GhostWatch's local viewer highlights each school's own row."
+}

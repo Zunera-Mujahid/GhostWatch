@@ -42,11 +42,13 @@ TIER 1 -- HIGH CONFIDENCE  (Real PMIU Visit + Synthetic rows)
   Drinking_Water = "No"                10%     No drinking water strongly suggests
                                                the school does not serve students
                                                on a daily basis.
-  Monitoring_Recency                   10%     Days since last monitoring visit;
-                                               linear 0-365 day scale capped at 365.
-                                               Schools not recently audited are
-                                               harder to hold accountable and
-                                               accumulated risk is unverified.
+  Monitoring_Recency                   10%     Days since last monitoring visit,
+                                               measured against a FIXED reference
+                                               date (latest Monitoring_Date in the
+                                               dataset) on a linear 0-365 day scale
+                                               capped at 365.  Schools not recently
+                                               audited are harder to hold accountable
+                                               and accumulated risk is unverified.
   Electricity = "No"                    5%     Lower weight because many rural
                                                primary schools legitimately operate
                                                without grid electricity.
@@ -91,7 +93,8 @@ TIER 2 -- SCREENING ONLY  (Real Census rows)
                                      Total:   100%
 
 ==========================================================================
-PRIORITY THRESHOLDS (fixed, global -- identical for BOTH tiers):
+PRIORITY THRESHOLDS (fixed, global -- identical for BOTH tiers; values live
+in ghostwatch_config.py, the single source of truth):
   High   : score >= 50   (strong indicators, immediate audit / visit)
   Medium : score >= 20   (moderate risk, schedule for review)
   Low    : score <  20   (appears functional or no strong signal)
@@ -99,6 +102,20 @@ PRIORITY THRESHOLDS (fixed, global -- identical for BOTH tiers):
   Illegal-occupation escalation: a school with Building_Illegal_Occupation
   = "Yes" has its Priority bumped up by one level (Low->Medium, Medium->High)
   AFTER the score-based assignment.  The score itself is NOT modified.
+
+  School_Status override (applied to BOTH tiers):
+    School_Status in ("Non-Functional", "Closed"):
+      * Score: +30 points, capped at 100.  Applied AFTER the weighted sum.
+      * Priority: forced to at least "High" regardless of numeric threshold.
+    Rationale: an explicit government declaration that a school is
+    non-functional or closed is the strongest single signal available.
+    It does not need to be inferred from proxy indicators.
+
+  Fixed reference date for recency:
+    Recency is computed relative to the LATEST Monitoring_Date found in the
+    dataset, NOT datetime.now().  This makes scores deterministic: running
+    the script on different days produces identical results as long as the
+    input data is unchanged.
 """
 
 import pandas as pd
@@ -106,6 +123,19 @@ import numpy as np
 from datetime import datetime
 import sys
 import os
+
+# All shared scoring constants (single source of truth)
+from ghostwatch_config import (
+    ILLEGAL_PRIORITY_ESCALATION,
+    PRIORITY_HIGH_MIN,
+    PRIORITY_MEDIUM_MIN,
+    RECENCY_CAP_DAYS,
+    SCORE_CAP,
+    STATUS_OVERRIDE_BONUS,
+    STATUS_OVERRIDE_STATES,
+    TIER1_WEIGHTS as _TIER1_FACTOR_WEIGHTS,
+    TIER2_WEIGHTS as _TIER2_FACTOR_WEIGHTS,
+)
 
 # ---------------------------------------------------------------------------
 # Force UTF-8 output on Windows to avoid cp1252 encoding errors
@@ -120,8 +150,10 @@ if sys.platform == "win32":
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_CSV = os.path.join(SCRIPT_DIR, "ghost_school_RAW_dataset_VERIFIED (1).csv")
 OUTPUT_CSV = os.path.join(SCRIPT_DIR, "ghostwatch_two_tier_scores.csv")
-TODAY = datetime.now()
-RECENCY_CAP_DAYS = 365  # anything above this gets full recency risk points
+# Recency reference: set after data is loaded (see Section 2 below).
+# Using a fixed reference date from the dataset instead of datetime.now()
+# ensures scores are stable across multiple runs.
+REFERENCE_DATE = None  # overwritten after parsing Monitoring_Date
 
 # Synthetic-row ground-truth expectations (for validation)
 SYNTHETIC_EXPECTATIONS = {
@@ -171,7 +203,16 @@ def parse_monitoring_date(raw):
 
 
 df["_mon_date"] = df["Monitoring_Date"].apply(parse_monitoring_date)
-df["_days_since"] = (TODAY - df["_mon_date"]).dt.days
+
+# Fixed reference date: the latest Monitoring_Date in the dataset.
+# This ensures deterministic, reproducible scores regardless of when the
+# script is run.  (Previously used datetime.now() which caused scores to
+# drift upward by ~0.03 points per day.)
+REFERENCE_DATE = df["_mon_date"].max()
+print(f"Recency reference date (latest Monitoring_Date): "
+      f"{REFERENCE_DATE.strftime('%Y-%m-%d')}")
+
+df["_days_since"] = (REFERENCE_DATE - df["_mon_date"]).dt.days
 df.loc[df["_days_since"] < 0, "_days_since"] = 0  # future dates -> 0
 
 
@@ -233,21 +274,20 @@ tier1["r_electricity"]    = binary_no_risk(tier1["Electricity"])
 tier1["r_recency"]        = (tier1["_days_since"].clip(upper=RECENCY_CAP_DAYS)
                              / RECENCY_CAP_DAYS)
 
-# Weighted sum  (weights are percentages that sum to 100)
-TIER1_WEIGHTS = {
-    "r_attendance":   30,
-    "r_illegal":      15,
-    "r_toilet":       15,
-    "r_boundary":     10,
-    "r_water":        10,
-    "r_recency":      10,
-    "r_electricity":   5,
-    "r_fill":          5,
-}
+# Weighted sum  (weights are percentages that sum to 100; the r_-prefixed
+# risk columns map 1:1 onto the semantic factors in ghostwatch_config.py)
+TIER1_WEIGHTS = {f"r_{factor}": w for factor, w in _TIER1_FACTOR_WEIGHTS.items()}
 
 tier1["Ghost_Risk_Score_Tier1"] = sum(
     tier1[col] * w for col, w in TIER1_WEIGHTS.items()
 ).round(2)
+
+# School_Status override: Non-Functional / Closed -> +bonus (cap 100)
+_status_t1 = tier1["School_Status"].astype(str).str.strip().isin(
+    STATUS_OVERRIDE_STATES)
+tier1.loc[_status_t1, "Ghost_Risk_Score_Tier1"] = (
+    tier1.loc[_status_t1, "Ghost_Risk_Score_Tier1"] + STATUS_OVERRIDE_BONUS
+).clip(upper=SCORE_CAP).round(2)
 
 tier1["Tier"] = 1
 tier1["Confidence_Level"] = "High"
@@ -268,17 +308,18 @@ tier2["r_boundary"]     = binary_no_risk(tier2["Boundary_Wall"])
 tier2["r_water"]        = binary_no_risk(tier2["Drinking_Water"].fillna("No"))
 tier2["r_electricity"]  = binary_no_risk(tier2["Electricity"].fillna("No"))
 
-TIER2_WEIGHTS = {
-    "r_illegal":      35,
-    "r_toilet":       25,
-    "r_boundary":     15,
-    "r_water":        15,
-    "r_electricity":  10,
-}
+TIER2_WEIGHTS = {f"r_{factor}": w for factor, w in _TIER2_FACTOR_WEIGHTS.items()}
 
 tier2["Infrastructure_Screening_Score"] = sum(
     tier2[col] * w for col, w in TIER2_WEIGHTS.items()
 ).round(2)
+
+# School_Status override: Non-Functional / Closed -> +bonus (cap 100)
+_status_t2 = tier2["School_Status"].astype(str).str.strip().isin(
+    STATUS_OVERRIDE_STATES)
+tier2.loc[_status_t2, "Infrastructure_Screening_Score"] = (
+    tier2.loc[_status_t2, "Infrastructure_Screening_Score"] + STATUS_OVERRIDE_BONUS
+).clip(upper=SCORE_CAP).round(2)
 
 tier2["Tier"] = 2
 tier2["Confidence_Level"] = "Low - Needs Satellite Verification"
@@ -289,12 +330,12 @@ tier2["Confidence_Level"] = "Low - Needs Satellite Verification"
 # ===================================================================
 
 def score_to_priority(score):
-    """Fixed global thresholds -- identical for every row."""
+    """Fixed global thresholds (ghostwatch_config.py) -- identical per row."""
     if pd.isna(score):
         return "Unknown"
-    if score >= 50:
+    if score >= PRIORITY_HIGH_MIN:
         return "High"
-    elif score >= 20:
+    elif score >= PRIORITY_MEDIUM_MIN:
         return "Medium"
     return "Low"
 
@@ -307,11 +348,18 @@ tier1["Priority"] = tier1["_score"].apply(score_to_priority)
 tier2["Priority"] = tier2["_score"].apply(score_to_priority)
 
 # Illegal-occupation escalation: bump priority up one level
-ESCALATION = {"Low": "Medium", "Medium": "High", "High": "High"}
+# (table lives in ghostwatch_config.py)
+ESCALATION = ILLEGAL_PRIORITY_ESCALATION
 
 for frame in (tier1, tier2):
     illegal = frame["r_illegal"] == 1.0
     frame.loc[illegal, "Priority"] = frame.loc[illegal, "Priority"].map(ESCALATION)
+
+# School_Status priority floor: Non-Functional / Closed -> at least High
+for frame in (tier1, tier2):
+    _floor = frame["School_Status"].astype(str).str.strip().isin(
+        STATUS_OVERRIDE_STATES)
+    frame.loc[_floor, "Priority"] = "High"
 
 
 # ===================================================================

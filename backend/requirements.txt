@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pandas>=2.0
+openpyxl>=3.1   # prepare_census_source.py (census XLSX -> CSV)
+folium>=0.16    # build_final_reason_and_map.py (map regeneration)

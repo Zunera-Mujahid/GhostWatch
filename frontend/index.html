@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GhostWatch Dashboard</title>
+<style>
+:root {
+  --high: #dc3545; --high-bg: #fce4e6;
+  --med: #fd7e14;  --med-bg: #fff3e0;
+  --low: #28a745;  --low-bg: #e8f5e9;
+  --hdr: #16213e;  --hdr2: #1a1a2e;
+  --border: #dee2e6; --bg: #f5f6fa; --card: #fff;
+  --text: #2d3436; --muted: #636e72; --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.6; }
+a { color: #2563eb; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+.hdr { background: linear-gradient(135deg, var(--hdr), var(--hdr2));
+       color: #fff; padding: 28px 32px; }
+.hdr h1 { font-size: 1.7rem; font-weight: 700; }
+.hdr p { color: #b2bec3; font-size: .9rem; margin-top: 2px; }
+
+.container { max-width: 1360px; margin: 0 auto; padding: 24px; }
+
+/* Stat cards */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+         gap: 16px; margin-bottom: 24px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 20px 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.08); border-left: 4px solid transparent; }
+.card h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px;
+           color: var(--muted); margin-bottom: 4px; }
+.card .num { font-size: 2rem; font-weight: 700; }
+.card.total { border-left-color: #6c5ce7; }
+.card.total .num { color: #6c5ce7; }
+.card.high  { border-left-color: var(--high); background: var(--high-bg); }
+.card.high .num  { color: var(--high); }
+.card.med   { border-left-color: var(--med); background: var(--med-bg); }
+.card.med .num   { color: var(--med); }
+.card.low   { border-left-color: var(--low); background: var(--low-bg); }
+.card.low .num   { color: var(--low); }
+
+/* Filters */
+.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+           background: var(--card); padding: 16px 20px; border-radius: var(--radius);
+           box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 20px; }
+.filters label { font-size: .82rem; font-weight: 600; color: var(--muted); }
+.filters select, .filters input[type=text] {
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: .9rem; background: #fff; min-width: 160px; }
+.filters input[type=text] { min-width: 220px; flex: 1; max-width: 320px; }
+.filters .spacer { flex: 1; }
+.filters .btn-map { padding: 8px 16px; background: var(--hdr); color: #fff;
+  border: none; border-radius: 6px; cursor: pointer; font-size: .85rem; font-weight: 600; }
+.filters .btn-map:hover { background: #0d1b3e; }
+
+/* Table */
+.table-wrap { background: var(--card); border-radius: var(--radius);
+              box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f8f9fa; text-align: left; padding: 12px 14px; font-size: .8rem;
+     text-transform: uppercase; letter-spacing: .3px; color: var(--muted);
+     border-bottom: 2px solid var(--border); cursor: pointer; user-select: none;
+     white-space: nowrap; }
+th:hover { background: #eef1f4; }
+th .arrow { font-size: .7rem; margin-left: 3px; }
+td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: .88rem; }
+tr.data-row { cursor: pointer; transition: background .15s; }
+tr.data-row:hover { background: #f0f4ff; }
+tr.data-row.selected { background: #e3ecff; }
+.empty-msg { text-align: center; padding: 40px; color: var(--muted); }
+
+/* Badges */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 12px;
+         font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.badge-High   { background: var(--high-bg); color: var(--high); }
+.badge-Medium { background: var(--med-bg);  color: var(--med); }
+.badge-Low    { background: var(--low-bg);  color: var(--low); }
+.badge-muted  { background: #f0f0f0; color: #999; }
+.status-badge { padding: 2px 8px; border-radius: 8px; font-size: .75rem; font-weight: 600; }
+.status-Open          { background: #d4edda; color: #155724; }
+.status-Closed        { background: #f8d7da; color: #721c24; }
+.status-Non-Functional{ background: #fff3cd; color: #856404; }
+
+/* Pagination */
+.pager { display: flex; align-items: center; justify-content: center;
+         gap: 8px; padding: 14px; }
+.pager button { padding: 6px 14px; border: 1px solid var(--border); background: #fff;
+  border-radius: 6px; cursor: pointer; font-size: .85rem; }
+.pager button:disabled { opacity: .4; cursor: default; }
+.pager button:hover:not(:disabled) { background: #f0f4ff; }
+.pager span { font-size: .85rem; color: var(--muted); }
+
+/* Detail panel */
+.detail { background: var(--card); border-radius: var(--radius);
+          box-shadow: 0 2px 8px rgba(0,0,0,.1); margin-bottom: 24px;
+          display: none; animation: slideIn .25s ease; }
+.detail.open { display: block; }
+@keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+.detail-hdr { display: flex; justify-content: space-between; align-items: flex-start;
+              padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.detail-hdr h2 { font-size: 1.15rem; }
+.detail-hdr .meta { font-size: .82rem; color: var(--muted); margin-top: 2px; }
+.detail-close { background: none; border: none; font-size: 1.4rem; cursor: pointer;
+                color: var(--muted); padding: 0 4px; }
+.detail-close:hover { color: var(--text); }
+.detail-body { padding: 20px 24px; display: grid;
+               grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 16px; }
+.detail-body .field label { display: block; font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--muted); margin-bottom: 2px; }
+.detail-body .field span { font-size: .9rem; }
+.detail-reason { background: linear-gradient(135deg, #fff8e1, #fff3e0);
+  border-left: 5px solid #e67e22; padding: 20px 24px; }
+.detail-reason h4 { font-size: .85rem; text-transform: uppercase; color: #e67e22;
+  letter-spacing: .4px; margin-bottom: 8px; font-weight: 700; }
+.detail-reason .reason-text { font-size: 1.05rem; line-height: 1.7; color: #2d3436; }
+.detail-reason .reason-text + .reason-text { margin-top: 10px; }
+.detail-reason .sub-reason { margin-top: 16px; padding-top: 14px; border-top: 1px solid #ffe0b2; }
+.detail-reason .sub-reason h4 { margin-bottom: 6px; color: #8d6e63; }
+.detail-reason .sub-reason p { font-size: .92rem; line-height: 1.6; color: #636e72; }
+/* Ghost verdict badge (Yes / Possible / No) */
+.ghost-verdict { display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+  border-radius: 8px; margin-bottom: 14px; font-weight: 600; }
+.ghost-verdict.verdict-yes { background: var(--high-bg); border: 2px solid var(--high); color: #a93226; }
+.ghost-verdict.verdict-no  { background: var(--low-bg);  border: 2px solid var(--low); color: #1e7e34; }
+.ghost-verdict.verdict-possible { background: var(--med-bg); border: 2px solid var(--med); color: #b35400; }
+.ghost-verdict .verdict-word { font-size: 1.25rem; font-weight: 800; letter-spacing: 1px;
+  padding: 4px 18px; border-radius: 6px; color: #fff; flex-shrink: 0; }
+.ghost-verdict.verdict-yes .verdict-word { background: var(--high); }
+.ghost-verdict.verdict-no  .verdict-word { background: var(--low); }
+.ghost-verdict.verdict-possible .verdict-word { background: var(--med); }
+.ghost-verdict .verdict-text { font-size: .95rem; line-height: 1.4; }
+/* Satellite photo in detail panel */
+.sat-photo { margin-top: 12px; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15); border: 1px solid #dee2e6;
+  max-width: 400px; }
+.sat-photo img { display: block; width: 100%; height: auto; image-rendering: auto; }
+.sat-photo .sat-caption { background: #f8f9fa; padding: 6px 10px; font-size: .75rem;
+  color: #636e72; text-align: center; }
+/* Tooltips */
+.tip { position: relative; display: inline-flex; align-items: center; cursor: help;
+       color: #8395a7; font-size: .78em; margin-left: 4px; vertical-align: middle;
+       font-style: normal; }
+.tip:hover { color: #576574; }
+.tip::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%);
+  background: #2d3436; color: #fff; padding: 8px 12px; border-radius: 6px;
+  font-size: .8rem; line-height: 1.45; white-space: normal; max-width: 300px;
+  min-width: 140px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  pointer-events: none; opacity: 0; transition: opacity .15s;
+  text-align: left; font-weight: 400;
+}
+.tip::before {
+  content: ''; position: absolute; bottom: calc(100% + 2px); left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #2d3436;
+  z-index: 1000; pointer-events: none; opacity: 0; transition: opacity .15s;
+}
+.tip:hover::after, .tip:hover::before { opacity: 1; }
+.detail-loading { padding: 30px; text-align: center; color: var(--muted); }
+
+/* Source-data actions (external record link + raw-data modal) */
+.source-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 16px 24px 20px; border-top: 1px solid var(--border); }
+.source-actions .src-note { font-size: .8rem; color: var(--muted); }
+.src-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+  color: var(--text); font-size: .85rem; font-weight: 600; cursor: pointer;
+  text-decoration: none; line-height: 1.35; }
+.src-btn:hover { background: #f0f4ff; text-decoration: none; }
+.src-btn.primary { background: var(--hdr); border-color: var(--hdr); color: #fff; }
+.src-btn.primary:hover { background: #0d1b3e; }
+
+/* Raw source-data modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.55);
+  display: flex; align-items: center; justify-content: center; z-index: 2000;
+  padding: 20px; }
+.modal-overlay[hidden] { display: none; }
+.modal { background: #fff; border-radius: var(--radius); max-width: 860px;
+  width: 100%; max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.modal-hdr { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-hdr h3 { font-size: 1rem; }
+.modal-hdr .modal-sub { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.modal-body { overflow: auto; padding: 0 20px 16px; }
+.modal-body table { width: 100%; border-collapse: collapse; }
+.modal-body td { padding: 8px 10px; font-size: .84rem; border-bottom: 1px solid #f0f0f0;
+  text-align: left; vertical-align: top; }
+.modal-body td.col-name { white-space: nowrap; color: var(--muted); font-weight: 600;
+  font-size: .74rem; text-transform: uppercase; letter-spacing: .3px; }
+.modal-body td.col-val { word-break: break-word; white-space: pre-wrap; }
+.modal-close { background: none; border: none; font-size: 1.3rem; cursor: pointer;
+  color: var(--muted); padding: 0 4px; flex-shrink: 0; }
+.modal-close:hover { color: var(--text); }
+
+/* Census source-file viewer modal */
+.modal.wide { max-width: 1150px; }
+.census-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); }
+.census-toolbar input[type=text] { flex: 1 1 240px; min-width: 200px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 6px; font-size: .85rem; }
+.census-count { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.census-back { background: none; border: none; color: var(--hdr); font-size: .78rem;
+  font-weight: 600; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
+.census-back:hover { text-decoration: underline; }
+.census-table-wrap { overflow: auto; flex: 1 1 auto; min-height: 260px;
+  border-top: 1px solid #f0f0f0; }
+.census-table { border-collapse: separate; border-spacing: 0; font-size: .76rem;
+  white-space: nowrap; }
+.census-table th { position: sticky; top: 0; background: var(--hdr); color: #fff;
+  font-weight: 600; text-align: left; padding: 6px 8px; z-index: 3;
+  border-bottom: 1px solid #0d1b3e; }
+.census-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0;
+  background: #fff; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+/* First four columns (#, school_id, emiscode, school_name) stay pinned
+   while the 108-column file scrolls horizontally */
+.census-table th.sticky-col, .census-table td.sticky-col { position: sticky; z-index: 2; }
+.census-table th.sticky-col { z-index: 4; }
+/* Class names come from the census file's own column names (c-${col}). */
+.census-table .c-ix         { left: 0;    width: 52px;  min-width: 52px;  max-width: 52px; }
+.census-table .c-school_id  { left: 52px; width: 70px;  min-width: 70px;  max-width: 70px; }
+.census-table .c-emiscode  { left: 122px; width: 82px; min-width: 82px; max-width: 82px; }
+.census-table .c-school_name { left: 204px; width: 190px; min-width: 190px; max-width: 190px; }
+.census-table td.c-school_name { text-overflow: ellipsis; }
+/* The clicked school's own row: highlighted + accent bar */
+.census-table tr.hl td { background: #fff3bf; font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--high); }
+.census-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  justify-content: space-between; padding: 10px 20px 14px;
+  border-top: 1px solid var(--border); font-size: .75rem; color: var(--muted); }
+.census-foot a { color: var(--hdr); font-weight: 600; text-decoration: none; }
+.census-foot a:hover { text-decoration: underline; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .stats { grid-template-columns: repeat(2,1fr); }
+  .filters { flex-direction: column; align-items: stretch; }
+  .filters select, .filters input[type=text] { min-width: auto; width: 100%; }
+  td, th { padding: 8px 10px; font-size: .82rem; }
+  .detail-body { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>GhostWatch &mdash; AI Ghost School Detector</h1>
+  <p>300 Punjab schools risk-scored via satellite imagery, government monitoring data &amp; AI fraud analysis</p>
+</div>
+
+<div class="container">
+  <!-- Stats -->
+  <div class="stats" id="stats"></div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <label>District</label>
+    <select id="fDistrict"><option value="">All Districts</option></select>
+    <label>Priority</label>
+    <select id="fPriority">
+      <option value="">All</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+    </select>
+    <label>Status</label>
+    <select id="fStatus">
+      <option value="">All</option>
+      <option value="Open">Open</option>
+      <option value="Closed">Closed</option>
+      <option value="Non-Functional">Non-Functional</option>
+    </select>
+    <label>Fraud Flag</label>
+    <select id="fFraud">
+      <option value="">All</option>
+      <option value="flagged_first">Flagged First</option>
+      <option value="flagged_only">Flagged Only</option>
+    </select>
+    <label>Satellite Risk</label>
+    <select id="fSatellite">
+      <option value="">All</option>
+      <option value="high_first">High First</option>
+      <option value="High">High Only</option>
+      <option value="Medium">Medium Only</option>
+      <option value="Low">Low Only</option>
+      <option value="NotVerified">Not Verified</option>
+    </select>
+    <input type="text" id="fSearch" placeholder="Search school name or EMIS code…">
+    <div class="spacer"></div>
+    <button class="btn-map" onclick="window.open('../ghostwatch_map.html','_blank')">Open Map ↗</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="pager" id="pager"></div>
+  </div>
+
+  <!-- Detail panel -->
+  <div class="detail" id="detail"></div>
+</div>
+
+<!-- Raw source-data modal (opened from the school detail panel) -->
+<div class="modal-overlay" id="rawModal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="rawModalTitle" onclick="if (event.target === this) closeRawData()">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <h3 id="rawModalTitle">Raw data used for this score</h3>
+        <div class="modal-sub" id="rawModalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeRawData()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body" id="rawModalBody"></div>
+  </div>
+</div>
+
+<!-- Census source-file viewer: the REAL government census spreadsheet,
+     searchable, with the clicked school's row scrolled-to and highlighted -->
+<div class="modal-overlay" id="censusModal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="censusModalTitle" onclick="if (event.target === this) closeCensus()">
+  <div class="modal wide">
+    <div class="modal-hdr">
+      <div>
+        <h3 id="censusModalTitle">Punjab Annual School Census 2017-18 — original government file</h3>
+        <div class="modal-sub" id="censusModalSub"></div>
+      </div>
+      <button class="modal-close" onclick="closeCensus()" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="census-toolbar">
+      <input type="text" id="censusSearch" autocomplete="off" spellcheck="false"
+             placeholder="Search this census file — EMIS code or school name…">
+      <span class="census-count" id="censusCount"></span>
+      <button class="census-back" id="censusBack" onclick="censusJumpBack()">&#8617; This school's row</button>
+      <button class="src-btn" id="censusPrev" onclick="censusPage(-1)">&#8249; Prev</button>
+      <button class="src-btn" id="censusNext" onclick="censusPage(1)">Next &#8250;</button>
+    </div>
+    <div class="census-table-wrap" id="censusTableWrap">
+      <div class="detail-loading">Loading census file…</div>
+    </div>
+    <div class="census-foot" id="censusFoot"></div>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+const PAGE_SIZE = 25;
+
+// ── State ───────────────────────────────────────────────────────────────
+let state = { skip: 0, district: '', priority: '', status: '', search: '', fraud: '', satellite: '',
+              sortCol: 'risk_score', sortAsc: false, total: 0, items: [],
+              selectedEmis: null };
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escAttr = s => esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+async function fetchJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+  return r.json();
+}
+
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+// ── Columns ─────────────────────────────────────────────────────────────
+const COLS = [
+  { key: 'School_Name',  label: 'School Name',  sort: true  },
+  { key: 'District',     label: 'District',      sort: true  },
+  { key: 'Tehsil',       label: 'Tehsil',        sort: true  },
+  { key: 'audit_priority', label: 'Priority',    sort: true  },
+  { key: 'risk_score',   label: 'Risk Score',    sort: true  },
+  { key: 'Satellite_Density_Flag', label: 'Satellite Risk', sort: true },
+  { key: 'Qwen_Fraud_Flag', label: 'Fraud Flag', sort: true },
+];
+
+// ── Render: Stats ───────────────────────────────────────────────────────
+function renderStats(s) {
+  $('stats').innerHTML = `
+    <div class="card total"><h3>Total Schools</h3><div class="num">${s.total_schools}</div></div>
+    <div class="card high"><h3>High Priority</h3><div class="num">${s.by_priority.High||0}</div></div>
+    <div class="card med"><h3>Medium Priority</h3><div class="num">${s.by_priority.Medium||0}</div></div>
+    <div class="card low"><h3>Low Priority</h3><div class="num">${s.by_priority.Low||0}</div></div>`;
+}
+
+// ── Render: District dropdown ───────────────────────────────────────────
+function renderDistricts(list) {
+  const sel = $('fDistrict');
+  sel.innerHTML = '<option value="">All Districts</option>' +
+    list.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+}
+
+// ── Render: Table ───────────────────────────────────────────────────────
+function renderTable() {
+  // header
+  $('thead').innerHTML = COLS.map(c => {
+    const arrow = c.sort ? (state.sortCol === c.key
+      ? `<span class="arrow">${state.sortAsc ? '▲' : '▼'}</span>` : '<span class="arrow">⇅</span>') : '';
+    return `<th data-col="${c.key}" ${c.sort ? 'class="sortable"' : ''}>${c.label}${arrow}</th>`;
+  }).join('');
+
+  // sort items client-side
+  let items = [...state.items];
+  const col = state.sortCol, asc = state.sortAsc;
+  // Satellite Risk severity: Low_Density=High(3), Mixed_Density=Medium(2), High_Density=Low(1), NoData=Not Verified(0)
+  const satRank = v => ({ Low_Density: 3, Mixed_Density: 2, High_Density: 1 }[v] || 0);
+  items.sort((a, b) => {
+    // "Flagged First" filter: flagged schools always at top
+    if (state.fraud === 'flagged_first') {
+      const fa = a.Qwen_Fraud_Flag === 'True' ? 1 : 0;
+      const fb = b.Qwen_Fraud_Flag === 'True' ? 1 : 0;
+      if (fa !== fb) return fb - fa;
+    }
+    // "High First" filter: high satellite-risk schools always at top
+    if (state.satellite === 'high_first') {
+      const sa = satRank(a.Satellite_Density_Flag), sb = satRank(b.Satellite_Density_Flag);
+      if (sa !== sb) return sb - sa;
+    }
+    let va = a[col], vb = b[col];
+    // Satellite Risk: sort by severity (High → Medium → Low → Not Verified), not alphabetically
+    if (col === 'Satellite_Density_Flag') {
+      const ra = satRank(va), rb = satRank(vb);
+      return asc ? ra - rb : rb - ra;
+    }
+    if (va == null) return 1; if (vb == null) return -1;
+    if (typeof va === 'number') return asc ? va - vb : vb - va;
+    return asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+
+  // rows
+  if (!items.length) {
+    $('tbody').innerHTML = `<tr><td colspan="${COLS.length}" class="empty-msg">No schools match your filters.</td></tr>`;
+  } else {
+    $('tbody').innerHTML = items.map(s => `
+      <tr class="data-row ${state.selectedEmis === s.EMIS_Code ? 'selected' : ''}"
+          data-emis="${esc(s.EMIS_Code)}">
+        ${COLS.map(c => renderCell(c, s)).join('')}
+      </tr>`).join('');
+  }
+
+  // pager
+  const pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  const cur = Math.floor(state.skip / PAGE_SIZE) + 1;
+  $('pager').innerHTML = `
+    <button id="pgPrev" ${cur <= 1 ? 'disabled' : ''}>← Prev</button>
+    <span>Page ${cur} of ${pages} &nbsp;(${state.total} schools)</span>
+    <button id="pgNext" ${cur >= pages ? 'disabled' : ''}>Next →</button>`;
+
+  // attach events
+  $('pgPrev')?.addEventListener('click', () => { state.skip = Math.max(0, state.skip - PAGE_SIZE); loadSchools(); });
+  $('pgNext')?.addEventListener('click', () => { state.skip += PAGE_SIZE; loadSchools(); });
+  $('thead').querySelectorAll('th.sortable').forEach(th =>
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (state.sortCol === col) state.sortAsc = !state.sortAsc;
+      else { state.sortCol = col; state.sortAsc = col === 'School_Name' || col === 'District'; }
+      renderTable();
+    })
+  );
+  $('tbody').querySelectorAll('.data-row').forEach(tr =>
+    tr.addEventListener('click', () => showDetail(tr.dataset.emis))
+  );
+}
+
+function renderCell(c, s) {
+  const v = s[c.key];
+  if (c.key === 'audit_priority')
+    return `<td><span class="badge badge-${v}">${esc(v)}</span></td>`;
+  if (c.key === 'School_Status')
+    return `<td><span class="status-badge status-${v ? v.replace(/\s/g,'') : ''}">${esc(v) || '—'}</span></td>`;
+  if (c.key === 'risk_score') {
+    const color = v >= 50 ? 'var(--high)' : v >= 25 ? 'var(--med)' : 'var(--low)';
+    const tip = s.Data_Risk_Reason ? `<span class="tip" data-tip="${escAttr(s.Data_Risk_Reason)}">ⓘ</span>` : '';
+    return `<td style="font-weight:700;color:${color}">${v} ${tip}</td>`;
+  }
+  if (c.key === 'Qwen_Fraud_Flag') {
+    if (v === 'True') {
+      const reason = s.Qwen_Fraud_Reason;
+      const tip = reason ? `<span class="tip" data-tip="${escAttr(reason)}">ⓘ</span>` : '';
+      return `<td><span style="color:var(--high);font-weight:600">⚠ Flagged</span> ${tip}</td>`;
+    }
+    if (v === 'False') return `<td style="color:var(--muted)">—</td>`;
+    return `<td>${esc(v) || '—'}</td>`;
+  }
+  if (c.key === 'Satellite_Density_Flag') {
+    const riskMap = {
+      High_Density: ['Low',    'badge-Low'],
+      Mixed_Density:['Medium', 'badge-Medium'],
+      Low_Density:  ['High',   'badge-High'],
+    };
+    const [label, cls] = riskMap[v] || ['Not Verified', 'badge-muted'];
+    let reason = s.Satellite_Risk_Reason;
+    if ((!v || v === 'NoData') && !reason) reason = 'No satellite data available — location could not be precisely geocoded';
+    const tip = reason ? `<span class="tip" data-tip="${escAttr(reason)}">ⓘ</span>` : '';
+    const confTag = s.Satellite_Confidence === 'Village-Level' ? '<span style="font-size:.7rem;color:#999;margin-left:4px">(village)</span>' : s.Satellite_Confidence === 'Tehsil-Level' ? '<span style="font-size:.7rem;color:#c80;margin-left:4px">(tehsil area)</span>' : '';
+    return `<td><span class="badge ${cls}">${label}</span>${confTag} ${tip}</td>`;
+  }
+  return `<td>${esc(v) || '—'}</td>`;
+}
+
+// ── Detail panel ────────────────────────────────────────────────────────
+async function showDetail(emis) {
+  state.selectedEmis = emis;
+  renderTable(); // highlight row
+  const el = $('detail');
+  el.className = 'detail open';
+  el.innerHTML = '<div class="detail-loading">Loading school details…</div>';
+  try {
+    const d = await fetchJSON(`/schools/${encodeURIComponent(emis)}`);
+    el.innerHTML = buildDetail(d);
+  } catch (e) {
+    el.innerHTML = `<div class="detail-loading" style="color:var(--high)">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function buildDetail(d) {
+  const badge = `<span class="badge badge-${d.audit_priority}">${esc(d.audit_priority)}</span>`;
+  const coords = d.Latitude != null ? `${d.Latitude.toFixed(5)}, ${d.Longitude.toFixed(5)}` : 'No coordinates';
+  const fields = [
+    ['EMIS Code', d.EMIS_Code], ['School Name', d.School_Name],
+    ['District', d.District], ['Tehsil', d.Tehsil],
+    ['Level', d.Level], ['School Status', d.School_Status],
+    ['Data Type', d.Data_Type], ['Monitoring Date', d.Monitoring_Date],
+    ['Coordinates', coords],
+    ['Risk Score', `${d.risk_score} &nbsp;${badge}`],
+    ['Data Tier', d.Tier === '1' ? '1 — full monitoring-visit data'
+      : d.Tier === '2' ? '2 — census infrastructure data only' : d.Tier],
+    ['Data Confidence', d.Confidence_Level],
+    ['Satellite Density', d.Satellite_Density_Flag],
+    ['Built-Up %', d.Satellite_BuiltUp_Percent != null ? d.Satellite_BuiltUp_Percent + '%' : null],
+    ['Teachers (Sanct / Filled)', d.Teachers_Sanctioned != null ? `${d.Teachers_Sanctioned} / ${d.Teachers_Filled ?? '—'}` : null],
+    ['Students (Enrolled / Present)', d.Total_Enrolled != null ? `${d.Total_Enrolled} / ${d.Total_Present ?? '—'}` : null],
+    ['Toilets (Total / Functional)', d.Toilets_Total != null ? `${d.Toilets_Total} / ${d.Toilets_Functional ?? '—'}` : null],
+    ['Boundary Wall', d.Boundary_Wall], ['Electricity', d.Electricity],
+    ['Drinking Water', d.Drinking_Water], ['Cleanliness', d.Cleanliness_Building],
+    ['Fraud Flag', d.Qwen_Fraud_Flag === 'True' ? '⚠ Flagged' : d.Qwen_Fraud_Flag],
+  ];
+  const fieldHTML = fields.filter(([,v]) => v != null && v !== '').map(([l,v]) =>
+    `<div class="field"><label>${l}</label><span>${v}</span></div>`).join('');
+
+  const reason = d.Final_GhostSchool_Reason || d.Data_Risk_Reason || 'No analysis reason available.';
+  // The reason may carry a separate "Monitoring Notes:" line after a newline;
+  // render each line as its own paragraph so the notes stay easy to read.
+  const reasonParas = String(reason).split(/\n+/).map(p => p.trim()).filter(Boolean);
+  const satReason = d.Satellite_Risk_Reason;
+  const fraudReason = d.Qwen_Fraud_Reason;
+
+  // Ghost-school verdict: driven by audit PRIORITY (the final risk classification).
+  // Tier is DATA CONFIDENCE only (Tier 1 = full PMIU monitoring-visit data,
+  // Tier 2 = census infrastructure data only) and must NOT be conflated with
+  // the verdict — a Tier 2 school can be High priority, a Tier 1 school Low.
+  const pri = String(d.audit_priority || '').trim().toLowerCase();
+  let verdictCls, verdictWord, verdictText;
+  if (pri === 'high') {
+    verdictCls = 'verdict-yes'; verdictWord = 'YES';
+    verdictText = 'Ghost School — strong indicators, audit recommended';
+  } else if (pri === 'medium') {
+    verdictCls = 'verdict-possible'; verdictWord = 'POSSIBLE';
+    verdictText = 'Possible ghost school — needs review';
+  } else {
+    verdictCls = 'verdict-no'; verdictWord = 'NO';
+    verdictText = 'Not flagged — appears functional';
+  }
+  const verdict = `
+    <div class="ghost-verdict ${verdictCls}">
+      <span class="verdict-word">${verdictWord}</span>
+      <span class="verdict-text">${verdictText}</span>
+    </div>`;
+
+  // Source-data actions: PMIU rows deep-link to that school's own government
+  // record (the PESRP portal already highlights that exact school); census
+  // rows open the bundled REAL census file in the local viewer with this
+  // school's row highlighted (the Open Data Pakistan site has no per-school
+  // view), plus the original dataset download link for transparency;
+  // synthetic rows have a plain-text note instead of a URL.  Every school
+  // also gets the raw-row modal with its exact underlying CSV data.
+  const srcRaw = String(d.Source_URL || '').trim();
+  const srcHref = /^https?:\/\//i.test(srcRaw) ? srcRaw.split(/\s+/)[0] : null;
+  let sourceActions =
+    `<button class="src-btn primary" data-emis="${escAttr(d.EMIS_Code)}" data-name="${escAttr(d.School_Name || '')}"
+             onclick="openRawData(this.dataset.emis, this.dataset.name)">&#128194; View raw data used for this score</button>`;
+  if (srcHref && d.Data_Type === 'Real (PMIU Visit)') {
+    sourceActions =
+      `<a class="src-btn" href="${escAttr(srcHref)}" target="_blank" rel="noopener">&#127963; View original government record &#8599;</a>`
+      + sourceActions;
+  } else if (d.Data_Type === 'Real (Census)') {
+    // The census dataset page has no per-school view -- instead open the
+    // bundled government census file itself, scrolled to this school's row.
+    sourceActions +=
+      `\n      <button class="src-btn" data-emis="${escAttr(d.EMIS_Code)}" data-name="${escAttr(d.School_Name || '')}"
+              onclick="openCensus(this.dataset.emis, this.dataset.name)">&#128202; View this school's row in the census file</button>`;
+    if (srcHref) {
+      sourceActions +=
+        `\n      <a class="src-btn" href="${escAttr(srcHref)}" target="_blank" rel="noopener">&#11015; Download full original government dataset &#8599;</a>`;
+    }
+  } else if (!srcHref && srcRaw) {
+    // Synthetic test rows: Source_URL holds an explanatory note, not a URL
+    sourceActions = `<span class="src-note">${esc(srcRaw)}</span>` + sourceActions;
+  }
+
+  return `
+    <div class="detail-hdr">
+      <div><h2>${esc(d.School_Name || d.EMIS_Code)}</h2>
+           <div class="meta">${esc(d.District || '—')} · ${esc(d.Tehsil || '—')} · EMIS ${esc(d.EMIS_Code)}</div></div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-reason">
+      <h4>🔍 Final Ghost-School Reason</h4>
+      ${verdict}
+      ${reasonParas.map(p => `<p class="reason-text">${esc(p)}</p>`).join('')}
+      ${(satReason || d.has_satellite_image) ? `<div class="sub-reason"><h4>📡 Satellite Analysis</h4>${satReason ? `<p>${esc(satReason)}</p>` : `<p>No density estimate for this school's exact location — the image below is general area context only.</p>`}${d.has_satellite_image ? `<div class="sat-photo"><img src="${API}/satellite-image/${encodeURIComponent(d.EMIS_Code)}" alt="Aerial image of ${esc(d.School_Name)}" loading="lazy"><div class="sat-caption">Aerial imagery · 200×200 m${d.Satellite_Confidence === 'Tehsil-Level' ? ' · tehsil area — approximate location, not the school itself' : ' · around school'}</div></div>` : ''}</div>` : ''}
+      ${fraudReason ? `<div class="sub-reason"><h4>🤖 AI Fraud Analysis</h4><p>${esc(fraudReason)}</p></div>` : ''}
+    </div>
+    <div class="detail-body">
+      ${fieldHTML}
+    </div>
+    <div class="source-actions">
+      ${sourceActions}
+    </div>`;
+}
+
+function closeDetail() {
+  $('detail').className = 'detail';
+  state.selectedEmis = null;
+  renderTable();
+}
+
+// ── Raw source-data modal ───────────────────────────────────────────────
+async function openRawData(emis, name) {
+  $('rawModal').hidden = false;
+  $('rawModalSub').textContent =
+    `${name || 'EMIS ' + emis} — every column from ghostwatch_final_merged_v2.csv, exactly as stored`;
+  $('rawModalBody').innerHTML = '<div class="detail-loading">Loading raw row…</div>';
+  try {
+    const raw = await fetchJSON(`/schools/${encodeURIComponent(emis)}/raw`);
+    const rows = Object.entries(raw).map(([k, v]) => {
+      const val = (v == null || v === '') ? '—' : String(v);
+      return `<tr><td class="col-name">${esc(k)}</td><td class="col-val">${esc(val)}</td></tr>`;
+    }).join('');
+    $('rawModalBody').innerHTML = `<table><tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    $('rawModalBody').innerHTML =
+      `<div class="detail-loading" style="color:var(--high)">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function closeRawData() {
+  $('rawModal').hidden = true;
+}
+
+// ── Census source-file viewer ─────────────────────────────────────────
+// Opens the bundled Punjab Annual School Census 2017-18 (public schools) —
+// the REAL government spreadsheet behind the census rows — as a searchable
+// table scrolled to and highlighting the clicked school's own row (matched
+// by EMIS code).  The Open Data Pakistan page has no per-school view, so
+// this local viewer over the real file is how the source can be inspected.
+const CENSUS_PAGE = 60;   // rows per file-order window
+const CENSUS_STICKY = new Set(['school_id', 'emiscode', 'school_name']);
+let censusState = { emis: null, name: '', mode: 'browse', start: 0, total: 0,
+                    rowIndex: null, columns: null, meta: null, q: '' };
+
+async function openCensus(emis, name) {
+  censusState = { emis: String(emis), name: name || '', mode: 'browse',
+                  start: 0, total: 0, rowIndex: null, q: '',
+                  columns: censusState.columns, meta: censusState.meta };
+  $('censusModal').hidden = false;
+  $('censusSearch').value = '';
+  $('censusCount').textContent = '';
+  $('censusModalSub').textContent =
+    (name || 'EMIS ' + emis) + ' — its row is highlighted below, matched by EMIS code';
+  $('censusTableWrap').innerHTML =
+    '<div class="detail-loading">Locating this school in the census file…</div>';
+  updateCensusPager();
+  try {
+    if (!censusState.meta) {
+      censusState.meta = await fetchJSON('/census/meta');
+      censusState.columns = censusState.meta.loaded_columns;
+    }
+    const loc = await fetchJSON(`/census/locate/${encodeURIComponent(emis)}`);
+    censusState.rowIndex = loc.index;
+    renderCensusFoot();
+    await censusLoadWindow(Math.max(loc.index - 12, 0), true);
+  } catch (e) {
+    $('censusTableWrap').innerHTML =
+      `<div class="detail-loading" style="color:var(--high)">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderCensusFoot() {
+  const m = censusState.meta;
+  if (!m) { $('censusFoot').innerHTML = ''; return; }
+  $('censusFoot').innerHTML =
+    `<span>File: <b>${esc(m.file)}</b> — ${Number(m.rows).toLocaleString()} public schools · ` +
+    `${m.columns} columns · downloaded from Open Data Pakistan (PMIU/PESRP), stored unmodified.</span>` +
+    (m.dataset_url
+      ? `<a href="${escAttr(m.dataset_url)}" target="_blank" rel="noopener">&#11015; Download full original government dataset &#8599;</a>`
+      : '');
+}
+
+async function censusLoadWindow(start, scrollHl) {
+  const res = await fetchJSON(`/census/rows?start=${start}&count=${CENSUS_PAGE}`);
+  censusState.mode = 'browse';
+  censusState.q = '';
+  censusState.start = res.start;
+  censusState.total = res.total;
+  renderCensusRows(res.rows);
+  $('censusCount').textContent =
+    `Row ${(censusState.rowIndex + 1).toLocaleString()} of ${Number(res.total).toLocaleString()}` +
+    ` · showing rows ${(res.start + 1).toLocaleString()}–${(res.start + res.count).toLocaleString()} (file order)`;
+  updateCensusPager();
+  if (scrollHl) censusScrollToHl();
+}
+
+function renderCensusRows(rows) {
+  const cols = censusState.columns || [];
+  const cls = c => CENSUS_STICKY.has(c) ? ` class="sticky-col c-${c}"` : '';
+  const head = '<tr><th class="sticky-col c-ix">#</th>' +
+    cols.map(c => `<th${cls(c)}>${esc(c)}</th>`).join('') + '</tr>';
+  const body = rows.map(r => {
+    const hl = String(r.emiscode).trim() === String(censusState.emis).trim() ? ' class="hl"' : '';
+    const cells = cols.map(c => {
+      const v = r[c] == null ? '' : String(r[c]);
+      return `<td${cls(c)} title="${escAttr(v)}">${esc(v)}</td>`;
+    }).join('');
+    return `<tr${hl} data-idx="${r.index}"><td class="sticky-col c-ix">${(r.index + 1).toLocaleString()}</td>${cells}</tr>`;
+  }).join('');
+  $('censusTableWrap').innerHTML =
+    `<table class="census-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function censusScrollToHl() {
+  const hl = $('censusTableWrap').querySelector('tr.hl');
+  if (hl) hl.scrollIntoView({ block: 'center' });
+}
+
+function updateCensusPager() {
+  const browse = censusState.mode === 'browse';
+  const atStart = !browse || censusState.start <= 0;
+  const atEnd = !browse || censusState.start + CENSUS_PAGE >= censusState.total;
+  $('censusPrev').disabled = atStart;
+  $('censusNext').disabled = atEnd;
+  $('censusPrev').style.opacity = atStart ? .45 : 1;
+  $('censusNext').style.opacity = atEnd ? .45 : 1;
+}
+
+async function censusPage(delta) {
+  if (censusState.mode !== 'browse' || !censusState.total) return;
+  const start = Math.max(0,
+    Math.min(censusState.start + delta * CENSUS_PAGE, censusState.total - 1));
+  if (start === censusState.start) return;
+  await censusLoadWindow(start, false);
+}
+
+async function censusJumpBack() {
+  if (censusState.rowIndex == null) return;
+  $('censusSearch').value = '';
+  await censusLoadWindow(Math.max(censusState.rowIndex - 12, 0), true);
+}
+
+async function censusDoSearch(q) {
+  if (!q) {                                   // cleared -> back to the school
+    if (censusState.rowIndex != null)
+      await censusLoadWindow(Math.max(censusState.rowIndex - 12, 0), true);
+    return;
+  }
+  censusState.mode = 'search';
+  censusState.q = q;
+  $('censusTableWrap').innerHTML = '<div class="detail-loading">Searching…</div>';
+  updateCensusPager();
+  try {
+    const res = await fetchJSON(`/census/search?q=${encodeURIComponent(q)}&limit=100`);
+    if (censusState.mode !== 'search' || censusState.q !== q) return;  // stale reply
+    renderCensusRows(res.rows);
+    const shown = Math.min(res.total_matches, res.limit);
+    $('censusCount').textContent = res.total_matches === 0
+      ? `No matches for “${q}”`
+      : `${Number(res.total_matches).toLocaleString()} match${res.total_matches === 1 ? '' : 'es'} for “${q}” · showing first ${shown}`;
+    updateCensusPager();
+    censusScrollToHl();   // stays highlighted if this school is among the hits
+  } catch (e) {
+    $('censusTableWrap').innerHTML =
+      `<div class="detail-loading" style="color:var(--high)">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function closeCensus() {
+  $('censusModal').hidden = true;
+}
+
+$('censusSearch').addEventListener('input',
+  debounce(e => censusDoSearch(e.target.value.trim()), 350));
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (!$('censusModal').hidden) closeCensus();
+    else if (!$('rawModal').hidden) closeRawData();
+  }
+});
+
+// ── Data loading ────────────────────────────────────────────────────────
+async function loadStats() {
+  try { renderStats(await fetchJSON('/stats')); }
+  catch (e) { $('stats').innerHTML = `<div class="card" style="color:var(--high)">Stats error: ${esc(e.message)}</div>`; }
+}
+
+async function loadDistricts() {
+  try { renderDistricts(await fetchJSON('/districts')); }
+  catch (e) { console.error('districts error', e); }
+}
+
+async function loadSchools() {
+  const p = new URLSearchParams();
+  p.set('skip', state.skip); p.set('limit', PAGE_SIZE);
+  if (state.district) p.set('district', state.district);
+  if (state.priority) p.set('priority', state.priority);
+  if (state.status)   p.set('status', state.status);
+  if (state.search)   p.set('search', state.search);
+  if (state.fraud === 'flagged_only') p.set('fraud_flag', 'True');
+  // Sort modes combine: flagged-first and satellite high-first can both be active
+  const sorts = [];
+  if (state.fraud === 'flagged_first') sorts.push('flagged_first');
+  if (state.satellite === 'high_first') sorts.push('high_first');
+  if (sorts.length) p.set('sort', sorts.join(','));
+  if (state.satellite && state.satellite !== 'high_first') p.set('satellite', state.satellite);
+  try {
+    const res = await fetchJSON('/schools?' + p.toString());
+    state.total = res.total;
+    state.items = res.items;
+    renderTable();
+  } catch (e) {
+    $('tbody').innerHTML = `<tr><td colspan="${COLS.length}" class="empty-msg" style="color:var(--high)">Error: ${esc(e.message)}<br>Is the backend running on ${API}?</td></tr>`;
+    $('pager').innerHTML = '';
+  }
+}
+
+// ── Filter event wiring ────────────────────────────────────────────────
+$('fDistrict').addEventListener('change', e => { state.district = e.target.value; state.skip = 0; loadSchools(); });
+$('fPriority').addEventListener('change', e => { state.priority = e.target.value; state.skip = 0; loadSchools(); });
+$('fStatus').addEventListener('change',   e => { state.status   = e.target.value; state.skip = 0; loadSchools(); });
+$('fFraud').addEventListener('change',   e => { state.fraud    = e.target.value; state.skip = 0; loadSchools(); });
+$('fSatellite').addEventListener('change', e => { state.satellite = e.target.value; state.skip = 0; loadSchools(); });
+$('fSearch').addEventListener('input', debounce(e => { state.search = e.target.value.trim(); state.skip = 0; loadSchools(); }, 400));
+
+// ── Init ────────────────────────────────────────────────────────────────
+loadStats();
+loadDistricts();
+loadSchools();
+</script>
+</body>
+</html>
